@@ -48,7 +48,7 @@ def main():
         'smtp_port': 465,
         'smtp_ssl': True,
         'smtp_user': '13151793@qq.com',
-        'smtp_password': 'ezcgckpvpmgcbjce',
+        'smtp_password': 'YOUR_AUTH_CODE',
         'from_name': '采购部',
         'company_name': 'XX公司',
         'sender_name': '李经理',

@@ -7,7 +7,7 @@ smtp:
   port: 465
   ssl: true  # QQ邮箱使用SSL
   user: 13151793@qq.com
-  password: ezcgckpvpmgcbjce  # 授权码
+  password: YOUR_AUTH_CODE  # 授权码
 
 # IMAP 配置（收取邮件）- QQ邮箱
 imap:
@@ -15,7 +15,7 @@ imap:
   port: 993
   ssl: true
   user: 13151793@qq.com
-  password: ezcgckpvpmgcbjce  # 授权码
+  password: YOUR_AUTH_CODE  # 授权码
 
 # 发件人信息
 from:

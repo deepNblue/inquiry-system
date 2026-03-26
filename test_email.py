@@ -22,7 +22,7 @@ def test_smtp_connection():
         "smtp_host": "smtp.qq.com",
         "smtp_port": 465,
         "smtp_user": "13151793@qq.com",
-        "smtp_password": "ezcgckpvpmgcbjce",
+        "smtp_password": "YOUR_AUTH_CODE",
         "from_name": "自动询价系统",
     })
     
@@ -54,7 +54,7 @@ def test_send_sample():
         "smtp_host": "smtp.qq.com",
         "smtp_port": 465,
         "smtp_user": "13151793@qq.com",
-        "smtp_password": "ezcgckpvpmgcbjce",
+        "smtp_password": "YOUR_AUTH_CODE",
         "from_name": "自动询价系统",
     })
     
@@ -113,7 +113,7 @@ def test_imap_connection():
         print("\n尝试连接...")
         
         mail = imaplib.IMAP4_SSL("imap.qq.com", 993)
-        mail.login("13151793@qq.com", "ezcgckpvpmgcbjce")
+        mail.login("13151793@qq.com", "YOUR_AUTH_CODE")
         
         # 列出文件夹
         status, folders = mail.list()
