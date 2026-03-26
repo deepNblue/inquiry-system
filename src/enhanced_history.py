@@ -108,36 +108,150 @@ class EnhancedHistoryMatcher:
         brand: str = "",
         model: str = "",
         category: str = "",
+        specs: str = "",
         options: SearchOptions = None
     ) -> List[HistoryPrice]:
         """
         智能搜索相似产品
         
         搜索策略优先级:
-        1. 精确匹配 (品牌+产品名完全相同)
-        2. 模糊匹配 (产品名相似)
-        3. 品牌降级 (同类品牌)
-        4. 品类降级 (同类产品)
+        1. ⭐ 参数匹配优先 (specs完全匹配或核心参数一致)
+        2. 精确匹配 (品牌+产品名完全相同)
+        3. 模糊匹配 (产品名相似)
+        4. 品牌降级 (同类品牌)
+        5. 品类降级 (同类产品)
         """
         opts = options or self.options
         
-        # 1. 精确匹配
+        # 1. ⭐ 参数匹配优先
+        if specs:
+            results = self._spec_match(product_name, brand, specs, opts)
+            if results:
+                return self._apply_fusion_score(results, opts, match_type="spec")
+        
+        # 2. 精确匹配
         results = self._exact_match(product_name, brand, model, opts)
         if results:
             return self._apply_fusion_score(results, opts)
         
-        # 2. 模糊匹配
+        # 3. 模糊匹配
         results = self._fuzzy_match(product_name, brand, opts)
         if results:
             return self._apply_fusion_score(results, opts, match_type="fuzzy")
         
-        # 3. 冷启动降级
+        # 4. 冷启动降级
         if opts.fallback_enabled:
             results = self._fallback_search(product_name, brand, category, opts)
             if results:
                 return self._apply_fusion_score(results, opts, match_type="fallback")
         
         return []
+    
+    def _spec_match(
+        self,
+        product_name: str,
+        brand: str,
+        specs: str,
+        opts: SearchOptions
+    ) -> List[Tuple]:
+        """
+        参数匹配 - 最高优先级
+        
+        匹配逻辑:
+        1. specs完全匹配
+        2. specs包含查询参数
+        3. 核心参数一致 (如分辨率、容量等)
+        """
+        if not specs:
+            return []
+        
+        # 提取核心参数关键词
+        core_params = self._extract_core_params(specs)
+        
+        # 构建SQL: 匹配产品名 AND 参数相似
+        brand_pattern = f"%{brand}%" if brand else "%"
+        
+        # 完全匹配
+        cursor = self.conn.execute("""
+            SELECT id, product_name, brand, model, price, currency, source, category, specs, timestamp
+            FROM price_history
+            WHERE product_name LIKE ?
+              AND specs = ?
+              AND timestamp >= ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, (f"%{product_name}%", specs, 
+              (datetime.now() - timedelta(days=opts.days)).isoformat(),
+              opts.top_k))
+        
+        results = cursor.fetchall()
+        
+        # specs包含匹配
+        if not results:
+            cursor = self.conn.execute("""
+                SELECT id, product_name, brand, model, price, currency, source, category, specs, timestamp,
+                       CASE 
+                         WHEN specs LIKE ? THEN 0.9
+                         ELSE 0.7
+                       END as spec_score
+                FROM price_history
+                WHERE product_name LIKE ?
+                  AND specs IS NOT NULL 
+                  AND specs != ''
+                  AND (specs LIKE ? OR specs LIKE ?)
+                  AND timestamp >= ?
+                ORDER BY spec_score DESC, timestamp DESC
+                LIMIT ?
+            """, (
+                f"%{specs}%",
+                f"%{product_name}%",
+                f"%{specs}%",
+                f"%{','.join(core_params)}%",
+                (datetime.now() - timedelta(days=opts.days)).isoformat(),
+                opts.top_k * 2
+            ))
+            results = cursor.fetchall()
+        
+        # 核心参数匹配
+        if not results and core_params:
+            placeholders = " OR specs LIKE ".join(["?" for _ in core_params])
+            cursor = self.conn.execute(f"""
+                SELECT id, product_name, brand, model, price, currency, source, category, specs, timestamp,
+                       0.6 as spec_score
+                FROM price_history
+                WHERE product_name LIKE ?
+                  AND (specs LIKE {placeholders})
+                  AND timestamp >= ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, [f"%{product_name}%"] + [f"%{p}%" for p in core_params] + 
+                 [(datetime.now() - timedelta(days=opts.days)).isoformat(), opts.top_k])
+            results = cursor.fetchall()
+        
+        return results
+    
+    def _extract_core_params(self, specs: str) -> List[str]:
+        """提取核心参数"""
+        import re
+        
+        # 定义核心参数模式
+        patterns = {
+            '分辨率': r'\d{3,4}[*×x]\d{3,4}',
+            '像素': r'\d+[兆万]?像素|\d+MP',
+            '焦距': r'\d+mm',
+            '容量': r'\d+[GT]B?',
+            '尺寸': r'\d+寸|\d+英寸',
+            '功率': r'\d+W',
+            '电压': r'\d+V',
+            '频率': r'\d+Hz',
+        }
+        
+        core_params = []
+        for param_name, pattern in patterns.items():
+            matches = re.findall(pattern, specs, re.IGNORECASE)
+            core_params.extend(matches)
+        
+        return core_params[:5]  # 最多5个核心参数
     
     def _exact_match(
         self,
@@ -256,13 +370,33 @@ class EnhancedHistoryMatcher:
         opts: SearchOptions,
         match_type: str = "exact"
     ) -> List[HistoryPrice]:
-        """融合多维度评分"""
+        """
+        融合多维度评分
+        
+        匹配类型权重:
+        - spec (参数匹配): 1.0 ⭐ 最高优先级
+        - exact (精确匹配): 0.95
+        - fuzzy (模糊匹配): 0.7
+        - fallback (降级): 0.5
+        """
         results = []
         now = datetime.now()
         
+        # 匹配类型基础分
+        type_scores = {
+            "spec": 1.0,      # ⭐ 参数匹配最高
+            "exact": 0.95,
+            "fuzzy": 0.7,
+            "fallback": 0.5,
+        }
+        base_similarity = type_scores.get(match_type, 0.6)
+        
         for row in rows:
+            # 获取spec_score列（如果有）
+            spec_score = row[10] if len(row) > 10 else None
+            
             # 基础相似度
-            similarity = 1.0 if match_type == "exact" else 0.6
+            similarity = spec_score if spec_score else base_similarity
             
             # 时效性衰减 (越新权重越高)
             try:
@@ -275,7 +409,7 @@ class EnhancedHistoryMatcher:
             
             # 品牌精确匹配加分
             if len(row) > 2 and row[2]:
-                similarity += 0.1
+                similarity += 0.05
             
             # 过滤低于阈值的
             if similarity >= opts.min_similarity:
