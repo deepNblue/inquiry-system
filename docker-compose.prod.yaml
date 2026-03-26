@@ -1,0 +1,124 @@
+# 自动询价系统 - Docker Compose 生产配置
+# 包含 PostgreSQL + Redis + API + UI
+
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: inquiry-postgres
+    environment:
+      POSTGRES_DB: inquiry
+      POSTGRES_USER: inquiry
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-inquiry_secure_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inquiry"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # TimescaleDB (可选，覆盖 postgres)
+  # timescale:
+  #   image: timescale/timescaledb:latest-pg15
+  #   environment:
+  #     POSTGRES_DB: inquiry
+  #     POSTGRES_USER: inquiry
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-inquiry_secure_password}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   restart: unless-stopped
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: inquiry-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_password}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_password}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # API 服务
+  api:
+    build: .
+    container_name: inquiry-api
+    command: python api.py
+    environment:
+      - DB_TYPE=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=inquiry
+      - DB_USER=inquiry
+      - DB_PASSWORD=${DB_PASSWORD:-inquiry_secure_password}
+      - REDIS_ENABLED=true
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_password}@redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Web UI (可选)
+  ui:
+    build: .
+    container_name: inquiry-ui
+    command: python ui.py
+    environment:
+      - API_URL=http://api:8000
+    ports:
+      - "7860:7860"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # 监控服务 (可选)
+  monitor:
+    build: .
+    container_name: inquiry-monitor
+    command: python src/monitor.py start
+    environment:
+      - DB_TYPE=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=inquiry
+      - DB_USER=inquiry
+      - DB_PASSWORD=${DB_PASSWORD:-inquiry_secure_password}
+      - REDIS_ENABLED=true
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_password}@redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: inquiry-network

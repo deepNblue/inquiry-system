@@ -1,0 +1,101 @@
+# 自动询价系统配置
+
+# ============ 通用设置 ============
+app:
+  name: "自动询价系统"
+  version: "0.1.0"
+  debug: false
+  data_dir: "data"
+
+# ============ 网页询价配置 ============
+web_scraper:
+  # Firecrawl API (https://www.firecrawl.dev)
+  firecrawl_api_key: ""
+  firecrawl_base_url: "https://api.firecrawl.dev"
+  
+  # 超时设置 (秒)
+  timeout: 30
+  
+  # 重试次数
+  retries: 3
+  
+  # 并发数
+  max_concurrent: 5
+  
+  # 搜索来源优先级
+  search_order:
+    - firecrawl
+    - scrapling
+    - reach
+
+# ============ 厂家询价配置 ============
+manufacturer:
+  # 邮件配置
+  email:
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    smtp_user: ""
+    smtp_password: ""
+    from_email: ""
+    use_tls: true
+  
+  # 飞书配置
+  feishu:
+    webhook: ""  # 飞书机器人 Webhook URL
+    app_id: ""
+    app_secret: ""
+  
+  # 询价模板
+  inquiry_template:
+    subject: "产品询价 - {product_count} 个产品"
+    body: |
+      您好，
+      
+      我们需要对以下产品进行询价，请提供报价：
+      
+      {product_list}
+      
+      期望回复时间：3个工作日内
+      
+      谢谢！
+
+# ============ 历史询价配置 ============
+history:
+  # 数据库路径
+  db_path: "data/history.db"
+  
+  # 向量搜索配置
+  vector:
+    enabled: false  # 需要安装 scikit-learn
+    top_k: 5
+    similarity_threshold: 0.7
+  
+  # 价格有效期 (天)
+  price_validity_days: 90
+
+# ============ 调度配置 ============
+scheduler:
+  enabled: true
+  timezone: "Asia/Shanghai"
+  
+  # 默认调度策略
+  default_schedule:
+    type: "interval"  # once, interval, cron
+    hours: 24  # 间隔小时数
+
+# ============ 输出配置 ============
+output:
+  # 格式: markdown, json, csv
+  default_format: "markdown"
+  
+  # 输出目录
+  output_dir: "output"
+  
+  # 报告模板
+  report_template: ""
+
+# ============ 日志配置 ============
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/inquiry.log"

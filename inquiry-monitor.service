@@ -1,0 +1,23 @@
+# inquiry-system 监控服务 (systemd)
+
+[Unit]
+Description=Inquiry System Price Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=duoduo
+WorkingDirectory=/home/duoduo/projects/inquiry-system
+ExecStart=/usr/bin/python3 /home/duoduo/projects/inquiry-system/src/monitor.py start
+Restart=always
+RestartSec=10
+
+# 环境变量
+Environment="PYTHONPATH=/home/duoduo/projects/inquiry-system"
+
+# 日志
+StandardOutput=append:/home/duoduo/projects/inquiry-system/logs/monitor.log
+StandardError=append:/home/duoduo/projects/inquiry-system/logs/monitor.error.log
+
+[Install]
+WantedBy=multi-user.target

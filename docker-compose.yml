@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  inquiry-system:
+    build: .
+    container_name: inquiry-system
+    ports:
+      - "8000:8000"
+      - "7860:7860"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped

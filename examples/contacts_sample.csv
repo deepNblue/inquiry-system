@@ -1,0 +1,25 @@
+# 邮件询价配置示例
+# 复制为 config.email.yaml 并填入真实信息
+
+# SMTP 配置（发送邮件）
+smtp:
+  host: smtp.gmail.com
+  port: 587
+  user: your-email@gmail.com
+  password: your-app-password  # Gmail需要应用专用密码
+
+# IMAP 配置（收取邮件）
+imap:
+  host: imap.gmail.com
+  port: 993
+  user: your-email@gmail.com
+  password: your-app-password
+
+# 发件人信息
+from:
+  name: 采购部
+  email: your-email@gmail.com
+  company: XX有限公司
+
+# 销售联系人（CSV格式）
+contacts_file: examples/contacts.csv

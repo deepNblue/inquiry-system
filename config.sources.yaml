@@ -1,0 +1,63 @@
+# 询价系统数据源配置
+
+sources:
+  手机:
+    - name: 京东手机
+      url_template: "https://search.jd.com/Search?keyword={keyword}&enc=utf-8"
+      price_selector: ".p-price strong i"
+      title_selector: ".p-name em"
+      requires_browser: true
+      headers:
+        User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    
+    - name: 淘宝手机
+      url_template: "https://s.taobao.com/search?q={keyword}"
+      price_selector: ".price"
+      title_selector: ".title"
+      requires_browser: true
+    
+    - name: 华为官网
+      url_template: "https://www.vmall.com/search?keyword={keyword}"
+      price_selector: ".pro-price"
+      title_selector: ".pro-name"
+      requires_browser: false
+
+  笔记本:
+    - name: 京东电脑
+      url_template: "https://search.jd.com/Search?keyword={keyword}&enc=utf-8"
+      price_selector: ".p-price strong i"
+      title_selector: ".p-name em"
+      requires_browser: true
+    
+    - name: 联想官网
+      url_template: "https://newshop.lenovo.com.cn/search?q={keyword}"
+      price_selector: ".price"
+      requires_browser: false
+    
+    - name: 戴尔官网
+      url_template: "https://www.dell.com/zh-cn/search/{keyword}"
+      price_selector: ".ps-dell-price"
+      requires_browser: true
+
+  通用:
+    - name: 百度搜索
+      url_template: "https://www.baidu.com/s?wd={keyword}+价格+报价"
+      price_selector: ""
+      requires_browser: false
+    
+    - name: 必应搜索
+      url_template: "https://cn.bing.com/search?q={keyword}+价格+site:jd.com+OR+site:taobao.com"
+      price_selector: ""
+      requires_browser: false
+
+# 默认数据源（未匹配类别时使用）
+default_sources:
+  - name: 京东
+    url_template: "https://search.jd.com/Search?keyword={keyword}&enc=utf-8"
+    price_selector: ".p-price strong i"
+    requires_browser: true
+  
+  - name: 淘宝
+    url_template: "https://s.taobao.com/search?q={keyword}"
+    price_selector: ".price"
+    requires_browser: true

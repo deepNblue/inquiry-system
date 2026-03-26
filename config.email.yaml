@@ -1,0 +1,30 @@
+# QQ邮箱邮件配置
+# 使用此配置发送和接收询价邮件
+
+# SMTP 配置（发送邮件）
+smtp:
+  host: smtp.qq.com
+  port: 465
+  ssl: true  # QQ邮箱使用SSL
+  user: 13151793@qq.com
+  password: ezcgckpvpmgcbjce  # 授权码
+
+# IMAP 配置（收取邮件）- QQ邮箱
+imap:
+  host: imap.qq.com
+  port: 993
+  ssl: true
+  user: 13151793@qq.com
+  password: ezcgckpvpmgcbjce  # 授权码
+
+# 发件人信息
+from:
+  name: 自动询价系统
+  email: 13151793@qq.com
+  company: XX采购部
+
+# 询价系统配置
+email_workflow:
+  # 询价会话保存路径
+  workflow_db: data/email_workflow.db
+  contacts_db: data/sales_contacts.db

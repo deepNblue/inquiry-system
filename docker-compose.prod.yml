@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # 主应用
+  inquiry-system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inquiry-system
+    restart: unless-stopped
+    ports:
+      - "8000:8000"  # API
+      - "7860:7860"  # Web UI
+    environment:
+      - TZ=Asia/Shanghai
+      # 邮件配置
+      - SMTP_HOST=smtp.qq.com
+      - SMTP_PORT=465
+      - SMTP_SSL=true
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      # IMAP配置
+      - IMAP_HOST=imap.qq.com
+      - IMAP_PORT=993
+      # 飞书配置
+      - FEISHU_WEBHOOK=${FEISHU_WEBHOOK}
+      # 数据库
+      - DB_TYPE=sqlite
+      - DB_PATH=/app/data/history.db
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./logs:/app/logs
+    networks:
+      - inquiry-net
+
+  # 可选：定时任务
+  inquiry-cron:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inquiry-cron
+    restart: unless-stopped
+    command: python3 src/scheduled_task.py
+    environment:
+      - TZ=Asia/Shanghai
+      - SMTP_HOST=smtp.qq.com
+      - SMTP_PORT=465
+      - SMTP_SSL=true
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - FEISHU_WEBHOOK=${FEISHU_WEBHOOK}
+      - DB_PATH=/app/data/history.db
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./logs:/app/logs
+    networks:
+      - inquiry-net
+    depends_on:
+      - inquiry-system
+
+networks:
+  inquiry-net:
+    driver: bridge
