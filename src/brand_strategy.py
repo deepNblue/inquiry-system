@@ -1,253 +1,222 @@
 """
-系统级品牌策略
-支持核心设备品牌一致、辅材性价比优先
+系统级品牌策略 v2
+- 核心设备：同一系统内品牌一致
+- 通用设备：性价比优先
+- 关联系统：紧密关联的系统尽量保持一致
 """
 
-from typing import List, Dict, Optional, Tuple
-from dataclasses import dataclass
+from typing import List, Dict, Optional, Set
+from dataclasses import dataclass, field
 from enum import Enum
 
 
-class DevicePriority(Enum):
-    """设备优先级"""
-    CORE = "core"           # 核心设备：品牌一致优先
-    IMPORTANT = "important"  # 重要设备：品牌参考
-    GENERAL = "general"     # 通用设备：性价比优先
+class DeviceType(Enum):
+    """设备类型"""
+    CORE = "core"       # 核心设备：系统内品牌一致
+    GENERAL = "general"  # 通用设备：性价比优先
 
 
-# 设备分类配置
-DEVICE_CATEGORIES = {
-    # 安防系统
+# 系统配置
+SYSTEMS = {
     "安防系统": {
-        "core": [
-            "网络摄像机", "摄像头", "NVR", "硬盘录像机", 
-            "视频解码器", "视频管理平台", "存储服务器"
-        ],
-        "important": [
-            "核心交换机", "汇聚交换机", "磁盘阵列", "SAN存储"
-        ],
-        "general": [
-            "监控硬盘", "硬盘", "网线", "光纤跳线", "水晶头",
-            "电源适配器", "交换机电源", "机柜", "PDU"
+        "core_keywords": [
+            "摄像机", "摄像头", "NVR", "硬盘录像机", "视频解码器",
+            "视频管理平台", "监控摄像头", "网络摄像机"
         ],
         "preferred_brand": "海康威视",
-        "compatible_brands": ["海康威视", "大华", "宇视"]
+        "related_systems": ["网络系统", "服务器系统"],  # 关联系统
     },
-    
-    # 网络系统
     "网络系统": {
-        "core": [
-            "核心交换机", "路由器", "防火墙", "负载均衡"
-        ],
-        "important": [
-            "汇聚交换机", "无线控制器", "AC控制器"
-        ],
-        "general": [
-            "接入交换机", "无线AP", "POE交换机", "网线"
+        "core_keywords": [
+            "交换机", "路由器", "防火墙", "负载均衡", "无线AC",
+            "无线控制器", "核心交换机", "汇聚交换机"
         ],
         "preferred_brand": "华为",
-        "compatible_brands": ["华为", "华三", "思科", "锐捷"]
+        "related_systems": ["安防系统", "服务器系统"],
     },
-    
-    # 服务器系统
     "服务器系统": {
-        "core": [
-            "服务器", "存储服务器", "SAN存储"
-        ],
-        "important": [
-            "磁带库", "备份设备", "光纤交换机"
-        ],
-        "general": [
-            "KVM", "机柜", "PDU", "显示器"
+        "core_keywords": [
+            "服务器", "存储服务器", "SAN存储", "磁带库",
+            "备份设备", "光纤交换机"
         ],
         "preferred_brand": "戴尔",
-        "compatible_brands": ["戴尔", "惠普", "华为", "联想"]
+        "related_systems": ["网络系统", "机房系统"],
     },
-    
-    # 机房基础设施
     "机房系统": {
-        "core": [
-            "UPS", "精密空调", "动环监控"
-        ],
-        "important": [
-            "配电柜", "蓄电池", "列头柜"
-        ],
-        "general": [
-            "PDU", "机柜", "线缆", "消防设备"
+        "core_keywords": [
+            "UPS", "精密空调", "动环监控", "配电柜", "蓄电池",
+            "列头柜", "冷水机组"
         ],
         "preferred_brand": "施耐德",
-        "compatible_brands": ["施耐德", "艾默生", "维谛", "华为"]
-    }
+        "related_systems": ["服务器系统"],
+    },
 }
 
-# 辅材兼容品牌映射
-GENERAL_COMPATIBLE_BRANDS = {
+# 核心设备的兼容品牌（同系统内可接受的替代）
+CORE_COMPATIBLE = {
+    "安防系统": ["海康威视", "大华", "宇视", "华为", "天地伟业"],
+    "网络系统": ["华为", "华三", "思科", "锐捷", "中兴"],
+    "服务器系统": ["戴尔", "惠普", "华为", "联想", "浪潮", "新华三"],
+    "机房系统": ["施耐德", "艾默生", "维谛", "华为", "伊顿", "山特"],
+}
+
+# 通用辅材品牌（性价比优先）
+GENERAL_BRANDS = {
     "监控硬盘": ["希捷", "西数", "东芝"],
     "硬盘": ["希捷", "西数", "东芝"],
-    "网线": ["康普", "罗格朗", "泛达", "绿联"],
-    "光纤跳线": ["康宁", "长飞", "泛达"],
-    "电源适配器": ["台达", "明纬", "菲尼克斯"],
+    "固态硬盘": ["三星", "intel", "西部数据", "金士顿"],
+    "网线": ["康普", "罗格朗", "泛达", "绿联", "秋叶原"],
+    "光纤跳线": ["康宁", "长飞", "泛达", "光纤之城"],
+    "水晶头": ["绿联", "泛达", "罗格朗"],
+    "电源适配器": ["台达", "明纬", "菲尼克斯", "长城"],
+    "机柜": ["图腾", "艾默生", "威图", "国产标准"],
+    "PDU": ["突破", "施耐德", "艾默生"],
+    "理线架": ["绿联", "泛达", "康普"],
 }
 
 
 @dataclass
-class SystemInquiryConfig:
-    """系统询价配置"""
-    system_type: str                    # 系统类型
-    preferred_brand: str                # 主选品牌
-    core_devices: List[str]            # 核心设备
-    important_devices: List[str]        # 重要设备
-    general_devices: List[str]          # 通用设备
-    compatible_brands: List[str]       # 兼容品牌
+class SystemBrand:
+    """系统品牌记录"""
+    system_type: str
+    brand: str
+    is_core_selected: bool = False
 
 
 class BrandStrategy:
     """品牌策略管理器"""
     
-    def __init__(self, system_type: str = "安防系统"):
-        self.system_type = system_type
-        self.config = self._get_config(system_type)
+    def __init__(self):
+        self.selected_brands: Dict[str, str] = {}  # system_type -> brand
+        self.related_brand_hints: Set[str] = set()  # 关联品牌提示
     
-    def _get_config(self, system_type: str) -> SystemInquiryConfig:
-        """获取系统配置"""
-        if system_type not in DEVICE_CATEGORIES:
-            # 默认安防系统
-            system_type = "安防系统"
-        
-        cat = DEVICE_CATEGORIES[system_type]
-        return SystemInquiryConfig(
-            system_type=system_type,
-            preferred_brand=cat["preferred_brand"],
-            core_devices=cat["core"],
-            important_devices=cat["important"],
-            general_devices=cat["general"],
-            compatible_brands=cat["compatible_brands"]
-        )
-    
-    def get_device_priority(self, device_name: str) -> DevicePriority:
-        """获取设备优先级"""
+    def get_device_type(self, device_name: str) -> DeviceType:
+        """判断设备类型"""
         name = device_name.lower()
         
-        # 核心设备
-        for d in self.config.core_devices:
-            if d.lower() in name or name in d.lower():
-                return DevicePriority.CORE
+        for system_name, config in SYSTEMS.items():
+            for keyword in config["core_keywords"]:
+                if keyword.lower() in name:
+                    return DeviceType.CORE
         
-        # 重要设备
-        for d in self.config.important_devices:
-            if d.lower() in name or name in d.lower():
-                return DevicePriority.IMPORTANT
-        
-        # 通用设备
-        for d in self.config.general_devices:
-            if d.lower() in name or name in d.lower():
-                return DevicePriority.GENERAL
-        
-        # 默认重要设备
-        return DevicePriority.IMPORTANT
+        return DeviceType.GENERAL
     
-    def get_preferred_brands(self, device_name: str) -> List[str]:
-        """
-        获取首选品牌列表
+    def get_core_brands(self, system_type: str) -> List[str]:
+        """获取核心品牌列表"""
+        brands = CORE_COMPATIBLE.get(system_type, [])
         
-        核心设备：主选品牌优先
-        通用设备：性价比品牌
-        """
-        priority = self.get_device_priority(device_name)
+        # 加入关联系统已选品牌
+        related = self._get_related_selected_brands(system_type)
+        brands = list(dict.fromkeys(related + brands))  # 去重，保持顺序
+        
+        return brands
+    
+    def get_general_brands(self, device_name: str) -> List[str]:
+        """获取通用品牌列表（性价比优先）"""
         name = device_name.lower()
         
-        if priority == DevicePriority.CORE:
-            # 核心设备：主选品牌优先
-            return [self.config.preferred_brand] + self.config.compatible_brands
+        # 查找匹配的辅材类别
+        for category, brands in GENERAL_BRANDS.items():
+            if category.lower() in name:
+                return brands
         
-        elif priority == DevicePriority.IMPORTANT:
-            # 重要设备：兼容品牌
-            return self.config.compatible_brands
+        # 默认辅材品牌
+        return ["希捷", "西数", "绿联", "台达"]
+    
+    def _get_related_selected_brands(self, system_type: str) -> List[str]:
+        """获取关联系统已选品牌"""
+        related_brands = []
+        
+        # 1. 关联系统已选品牌
+        related_systems = SYSTEMS.get(system_type, {}).get("related_systems", [])
+        for rel_sys in related_systems:
+            if rel_sys in self.selected_brands:
+                related_brands.append(self.selected_brands[rel_sys])
+        
+        return related_brands
+    
+    def select_core_brand(self, system_type: str) -> str:
+        """选择核心品牌"""
+        if system_type in self.selected_brands:
+            return self.selected_brands[system_type]
+        
+        # 优先选择关联系统已选品牌
+        related = self._get_related_selected_brands(system_type)
+        if related:
+            brand = related[0]
+            self.selected_brands[system_type] = brand
+            return brand
+        
+        # 否则选择系统主选品牌
+        brand = SYSTEMS.get(system_type, {}).get("preferred_brand", "待定")
+        self.selected_brands[system_type] = brand
+        return brand
+    
+    def select_brand_for_device(
+        self,
+        device_name: str,
+        system_type: str,
+        available_brands: List[str] = None
+    ) -> str:
+        """
+        为设备选择品牌
+        
+        策略:
+        1. 核心设备：优先同系统已选品牌，其次关联系统品牌
+        2. 通用设备：性价比最优
+        """
+        device_type = self.get_device_type(device_name)
+        
+        if device_type == DeviceType.CORE:
+            # 核心设备：品牌一致
+            core_brands = self.get_core_brands(system_type)
+            
+            # 按优先级选择
+            for brand in core_brands:
+                if available_brands:
+                    if brand in available_brands:
+                        return brand
+                else:
+                    return brand
+            
+            return core_brands[0] if core_brands else "待定"
         
         else:
-            # 通用设备：辅材兼容品牌
-            for general_type, brands in GENERAL_COMPATIBLE_BRANDS.items():
-                if general_type.lower() in name:
-                    return brands
-            # 默认返回兼容品牌
-            return self.config.compatible_brands
-    
-    def classify_devices(self, devices: List[Dict]) -> Dict[str, List[Dict]]:
-        """对设备列表进行分类"""
-        classified = {
-            "core": [],
-            "important": [],
-            "general": []
-        }
-        
-        for device in devices:
-            name = device.get("name", "")
-            priority = self.get_device_priority(name)
+            # 通用设备：性价比优先
+            general_brands = self.get_general_brands(device_name)
             
-            if priority == DevicePriority.CORE:
-                classified["core"].append(device)
-            elif priority == DevicePriority.IMPORTANT:
-                classified["important"].append(device)
-            else:
-                classified["general"].append(device)
-        
-        return classified
+            for brand in general_brands:
+                if available_brands:
+                    if brand in available_brands:
+                        return brand
+                else:
+                    return brand
+            
+            return general_brands[0] if general_brands else "性价比最优"
     
-    def suggest_brand(self, device_name: str, available_brands: List[str]) -> str:
-        """建议品牌"""
-        preferred = self.get_preferred_brands(device_name)
-        
-        # 按优先级顺序选择
-        for brand in preferred:
-            if brand in available_brands:
-                return brand
-        
-        # 如果首选都不在，返回可用品牌中的第一个
-        return available_brands[0] if available_brands else "待定"
+    def record_selection(self, system_type: str, brand: str, is_core: bool):
+        """记录品牌选择"""
+        if is_core:
+            self.selected_brands[system_type] = brand
     
-    def generate_strategy_report(self) -> str:
-        """生成策略报告"""
-        lines = [
-            f"## 系统类型: {self.config.system_type}",
-            f"**主选品牌**: {self.config.preferred_brand}",
-            "",
-            "### 设备分类",
-            "",
-            "**🔴 核心设备** (品牌一致优先):",
-        ]
-        
-        for d in self.config.core_devices:
-            lines.append(f"- {d}")
-        
-        lines.extend(["", "**🟡 重要设备** (品牌参考):"])
-        for d in self.config.important_devices:
-            lines.append(f"- {d}")
-        
-        lines.extend(["", "**🟢 通用设备** (性价比优先):"])
-        for d in self.config.general_devices:
-            lines.append(f"- {d}")
-        
-        lines.extend(["", "### 兼容品牌"])
-        lines.append(f"- 主选: {self.config.preferred_brand}")
-        lines.append(f"- 兼容: {', '.join(self.config.compatible_brands)}")
-        
-        return "\n".join(lines)
+    def get_selection_summary(self) -> str:
+        """获取选择汇总"""
+        lines = []
+        for system, brand in self.selected_brands.items():
+            lines.append(f"- {system}: {brand}")
+        return "\n".join(lines) if lines else "尚未选择任何品牌"
 
 
-# 快捷函数
-def get_brand_strategy(system_type: str = "安防系统") -> BrandStrategy:
-    """获取品牌策略"""
-    return BrandStrategy(system_type)
+# 辅助函数
+def classify_core_device(device_name: str) -> bool:
+    """判断是否为核心设备"""
+    strategy = BrandStrategy()
+    return strategy.get_device_type(device_name) == DeviceType.CORE
 
 
-def classify_device(device_name: str, system_type: str = "安防系统") -> str:
-    """快速分类设备"""
-    strategy = BrandStrategy(system_type)
-    priority = strategy.get_device_priority(device_name)
-    return priority.value
+def suggest_brand(device_name: str, system_type: str, available_brands: List[str] = None) -> str:
+    """建议品牌"""
+    strategy = BrandStrategy()
+    return strategy.select_brand_for_device(device_name, system_type, available_brands)
 
 
-def get_best_brand(device_name: str, available_brands: List[str], system_type: str = "安防系统") -> str:
-    """获取最佳品牌"""
-    strategy = BrandStrategy(system_type)
-    return strategy.suggest_brand(device_name, available_brands)

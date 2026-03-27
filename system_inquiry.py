@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-系统级询价
-支持核心设备品牌一致、辅材性价比优先
+系统级询价 v2
+- 核心设备：系统内品牌一致
+- 通用设备：性价比优先
+- 关联系统：紧密关联的系统尽量保持一致
 """
 
 import sys
@@ -12,9 +14,7 @@ from dataclasses import dataclass
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.brand_strategy import BrandStrategy, DevicePriority, get_brand_strategy
-from src.history import HistoryMatcher, SearchOptions
-from src.report_generator import ReportGenerator
+from src.brand_strategy import BrandStrategy, DeviceType, SYSTEMS
 
 
 @dataclass
@@ -26,7 +26,7 @@ class ProductResult:
     specs: str
     price: float
     source: str
-    priority: str
+    device_type: str          # core / general
     recommended_brand: str
     note: str
 
@@ -34,9 +34,8 @@ class ProductResult:
 class SystemInquiry:
     """系统级询价"""
     
-    def __init__(self, system_type: str = "安防系统"):
-        self.strategy = BrandStrategy(system_type)
-        self.matcher = HistoryMatcher()
+    def __init__(self):
+        self.strategy = BrandStrategy()
         self.results: List[ProductResult] = []
     
     def inquire(
@@ -47,73 +46,71 @@ class SystemInquiry:
         """
         执行系统级询价
         
-        Args:
-            products: 产品列表 [{name, brand, model, specs, quantity}]
-            system_type: 系统类型
-        
-        Returns:
-            询价结果列表
+        策略:
+        1. 核心设备 → 系统内品牌一致
+        2. 通用设备 → 性价比最优
+        3. 关联系统 → 尽量保持一致
         """
-        # 更新策略
-        self.strategy = BrandStrategy(system_type)
-        
         print(f"\n{'='*60}")
         print(f"  系统级询价: {system_type}")
-        print(f"  主选品牌: {self.strategy.config.preferred_brand}")
         print(f"{'='*60}\n")
         
-        # 分类设备
-        classified = self.strategy.classify_devices(products)
+        # 分离核心和通用设备
+        core_devices = []
+        general_devices = []
+        
+        for p in products:
+            device_type = self.strategy.get_device_type(p.get("name", ""))
+            if device_type == DeviceType.CORE:
+                core_devices.append(p)
+            else:
+                general_devices.append(p)
         
         results = []
         
-        # 1. 询价核心设备（品牌一致）
-        if classified["core"]:
-            print(f"🔴 核心设备询价 ({len(classified['core'])} 项)")
-            print(f"   策略: 品牌一致优先 ({self.strategy.config.preferred_brand})\n")
-            for p in classified["core"]:
-                result = self._inquire_core_device(p)
+        # 1. 先询价核心设备（确定系统品牌）
+        if core_devices:
+            print(f"🔴 核心设备 ({len(core_devices)} 项)")
+            print(f"   策略: 系统内品牌一致\n")
+            
+            # 选择系统主品牌
+            main_brand = self.strategy.select_core_brand(system_type)
+            print(f"   主选品牌: {main_brand}\n")
+            
+            for p in core_devices:
+                result = self._inquire_core_device(p, system_type, main_brand)
                 results.append(result)
         
-        # 2. 询价重要设备（品牌参考）
-        if classified["important"]:
-            print(f"\n🟡 重要设备询价 ({len(classified['important'])} 项)")
-            print(f"   策略: 品牌参考\n")
-            for p in classified["important"]:
-                result = self._inquire_important_device(p)
-                results.append(result)
-        
-        # 3. 询价通用设备（性价比优先）
-        if classified["general"]:
-            print(f"\n🟢 通用设备询价 ({len(classified['general'])} 项)")
+        # 2. 询价通用设备（性价比优先）
+        if general_devices:
+            print(f"\n🟢 通用设备 ({len(general_devices)} 项)")
             print(f"   策略: 性价比优先\n")
-            for p in classified["general"]:
+            
+            for p in general_devices:
                 result = self._inquire_general_device(p)
                 results.append(result)
         
         self.results = results
         return results
     
-    def _inquire_core_device(self, product: Dict) -> ProductResult:
+    def _inquire_core_device(self, product: Dict, system_type: str, main_brand: str) -> ProductResult:
         """询价核心设备"""
         name = product.get("name", "")
-        preferred = self.strategy.config.preferred_brand
         
         print(f"  📹 {name}")
-        print(f"     首选: {preferred}")
+        print(f"     品牌: {main_brand}")
         
-        # 查询主选品牌
-        options = SearchOptions(top_k=3)
-        matches = self.matcher.search_similar(
-            name,
-            brand=preferred,
-            specs=product.get("specs", ""),
-            options=options
-        )
+        # 查询主品牌
+        from src.history import HistoryMatcher, SearchOptions
+        matcher = HistoryMatcher()
+        options = SearchOptions(top_k=5)
+        
+        matches = matcher.search_similar(name, brand=main_brand, options=options)
         
         if matches:
             r = matches[0]
             print(f"     结果: {r.brand} ¥{r.price:,.0f}")
+            matcher.close()
             return ProductResult(
                 name=name,
                 brand=r.brand,
@@ -121,18 +118,22 @@ class SystemInquiry:
                 specs=r.specs,
                 price=r.price,
                 source=r.source,
-                priority="core",
-                recommended_brand=preferred,
-                note=f"核心设备，品牌一致"
+                device_type="core",
+                recommended_brand=main_brand,
+                note=f"核心设备，{r.brand}"
             )
         
         # 尝试兼容品牌
-        for brand in self.strategy.config.compatible_brands:
-            if brand != preferred:
-                matches = self.matcher.search_similar(name, brand=brand, options=options)
+        from src.brand_strategy import CORE_COMPATIBLE
+        compatible = CORE_COMPATIBLE.get(system_type, [])
+        
+        for brand in compatible:
+            if brand != main_brand:
+                matches = matcher.search_similar(name, brand=brand, options=options)
                 if matches:
                     r = matches[0]
                     print(f"     备选: {r.brand} ¥{r.price:,.0f}")
+                    matcher.close()
                     return ProductResult(
                         name=name,
                         brand=r.brand,
@@ -140,11 +141,12 @@ class SystemInquiry:
                         specs=r.specs,
                         price=r.price,
                         source=r.source,
-                        priority="core",
-                        recommended_brand=preferred,
+                        device_type="core",
+                        recommended_brand=main_brand,
                         note=f"核心设备，{r.brand}替代"
                     )
         
+        matcher.close()
         print(f"     ⚠️ 无历史数据")
         return ProductResult(
             name=name,
@@ -153,73 +155,39 @@ class SystemInquiry:
             specs=product.get("specs", ""),
             price=0,
             source="",
-            priority="core",
-            recommended_brand=preferred,
+            device_type="core",
+            recommended_brand=main_brand,
             note="核心设备，待询价"
         )
     
-    def _inquire_important_device(self, product: Dict) -> ProductResult:
-        """询价重要设备"""
-        name = product.get("name", "")
-        compatible = self.strategy.config.compatible_brands
-        
-        print(f"  ⚡ {name}")
-        
-        # 尝试兼容品牌
-        options = SearchOptions(top_k=3)
-        for brand in compatible:
-            matches = self.matcher.search_similar(name, brand=brand, options=options)
-            if matches:
-                r = matches[0]
-                note = "同品牌" if brand == self.strategy.config.preferred_brand else "兼容品牌"
-                print(f"     {brand} ¥{r.price:,.0f} [{note}]")
-                return ProductResult(
-                    name=name,
-                    brand=r.brand,
-                    model=r.model,
-                    specs=r.specs,
-                    price=r.price,
-                    source=r.source,
-                    priority="important",
-                    recommended_brand=brand,
-                    note=f"重要设备，{note}"
-                )
-        
-        print(f"     ⚠️ 无历史数据")
-        return ProductResult(
-            name=name,
-            brand="待定",
-            model="",
-            specs=product.get("specs", ""),
-            price=0,
-            source="",
-            priority="important",
-            recommended_brand=compatible[0],
-            note="重要设备，待询价"
-        )
-    
     def _inquire_general_device(self, product: Dict) -> ProductResult:
-        """询价通用设备（性价比优先）"""
+        """询价通用设备"""
         name = product.get("name", "")
         
         print(f"  💰 {name}")
         
-        # 获取辅材兼容品牌
-        preferred = self.strategy.get_preferred_brands(name)
+        from src.history import HistoryMatcher, SearchOptions
+        from src.brand_strategy import GENERAL_BRANDS
         
-        options = SearchOptions(top_k=5, min_similarity=0.3)
+        matcher = HistoryMatcher()
+        options = SearchOptions(top_k=10, min_similarity=0.3)
+        
+        # 获取辅材品牌列表
+        general_brands = self.strategy.get_general_brands(name)
+        
         all_matches = []
         
-        # 查询所有兼容品牌
-        for brand in preferred:
-            matches = self.matcher.search_similar(name, brand=brand, options=options)
+        # 查询所有辅材品牌
+        for brand in general_brands:
+            matches = matcher.search_similar(name, brand=brand, options=options)
             all_matches.extend(matches)
         
         # 按价格排序，选最低
         if all_matches:
             all_matches.sort(key=lambda x: x.price)
             r = all_matches[0]
-            print(f"     {r.brand} ¥{r.price:,.0f} [性价比最优]")
+            print(f"     结果: {r.brand} ¥{r.price:,.0f} [性价比最优]")
+            matcher.close()
             return ProductResult(
                 name=name,
                 brand=r.brand,
@@ -227,11 +195,12 @@ class SystemInquiry:
                 specs=r.specs,
                 price=r.price,
                 source=r.source,
-                priority="general",
+                device_type="general",
                 recommended_brand=r.brand,
-                note="辅材，性价比最优"
+                note="通用辅材，性价比最优"
             )
         
+        matcher.close()
         print(f"     ⚠️ 无历史数据")
         return ProductResult(
             name=name,
@@ -240,9 +209,9 @@ class SystemInquiry:
             specs=product.get("specs", ""),
             price=0,
             source="",
-            priority="general",
+            device_type="general",
             recommended_brand="性价比最优",
-            note="辅材，待询价"
+            note="通用辅材，待询价"
         )
     
     def generate_report(self, output_path: str = "output/system_inquiry.md") -> str:
@@ -250,47 +219,48 @@ class SystemInquiry:
         import os
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
+        # 汇总品牌选择
+        core_brands = {}
+        for r in self.results:
+            if r.device_type == "core" and r.brand != "待定":
+                if r.recommended_brand not in core_brands:
+                    core_brands[r.recommended_brand] = []
+                core_brands[r.recommended_brand].append(r)
+        
         lines = [
             f"# 系统询价报告",
             f"",
-            f"**系统类型**: {self.strategy.system_type}",
-            f"**主选品牌**: {self.strategy.config.preferred_brand}",
             f"**询价时间**: 略",
             f"",
             f"---",
             f"",
         ]
         
-        # 按优先级分组
-        core = [r for r in self.results if r.priority == "core"]
-        important = [r for r in self.results if r.priority == "important"]
-        general = [r for r in self.results if r.priority == "general"]
-        
         # 核心设备
+        core = [r for r in self.results if r.device_type == "core"]
         if core:
+            # 汇总核心品牌
+            brand_summary = {}
+            for r in core:
+                if r.brand != "待定":
+                    brand_summary[r.brand] = brand_summary.get(r.brand, 0) + 1
+            
             lines.extend([
                 f"## 🔴 核心设备 ({len(core)} 项)",
-                f"",
-                f"| 设备 | 品牌 | 型号 | 价格 | 推荐品牌 | 说明 |",
-                f"|------|------|------|------|----------|------|",
-            ])
-            for r in core:
-                lines.append(f"| {r.name} | {r.brand} | {r.model} | ¥{r.price:,.0f} | {r.recommended_brand} | {r.note} |")
-            lines.append("")
-        
-        # 重要设备
-        if important:
-            lines.extend([
-                f"## 🟡 重要设备 ({len(important)} 项)",
                 f"",
                 f"| 设备 | 品牌 | 型号 | 价格 | 说明 |",
                 f"|------|------|------|------|------|",
             ])
-            for r in important:
+            for r in core:
                 lines.append(f"| {r.name} | {r.brand} | {r.model} | ¥{r.price:,.0f} | {r.note} |")
+            
+            if brand_summary:
+                brands_str = " + ".join([f"{b}×{c}" for b, c in brand_summary.items()])
+                lines.extend(["", f"**核心品牌**: {brands_str}"])
             lines.append("")
         
         # 通用设备
+        general = [r for r in self.results if r.device_type == "general"]
         if general:
             lines.extend([
                 f"## 🟢 通用设备 ({len(general)} 项)",
@@ -310,7 +280,6 @@ class SystemInquiry:
             f"## 📊 汇总",
             f"",
             f"- 核心设备: {len(core)} 项",
-            f"- 重要设备: {len(important)} 项",
             f"- 通用设备: {len(general)} 项",
             f"- **预估总价: ¥{total:,.0f}**",
             f"",
@@ -318,9 +287,9 @@ class SystemInquiry:
             f"",
             f"## 💡 询价建议",
             f"",
-            f"1. **核心设备** ({self.strategy.config.preferred_brand}) 建议整包采购",
-            f"2. **辅材** 可分项采购，选择性价比高的品牌",
-            f"3. 建议联系 {self.strategy.config.preferred_brand} 代理商获取正式报价",
+            f"1. **核心设备** 建议整包采购同一品牌",
+            f"2. **通用辅材** 可分项采购，选择性价比高的品牌",
+            f"3. 建议联系品牌代理商获取正式报价",
         ])
         
         content = "\n".join(lines)
@@ -331,8 +300,8 @@ class SystemInquiry:
         return output_path
     
     def close(self):
-        """关闭连接"""
-        self.matcher.close()
+        """关闭"""
+        pass
 
 
 def load_products_from_csv(file_path: str) -> List[Dict]:
@@ -357,8 +326,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="系统级询价")
     parser.add_argument("-i", "--input", required=True, help="产品CSV文件")
-    parser.add_argument("-s", "--system", default="安防系统", choices=["安防系统", "网络系统", "服务器系统", "机房系统"],
-                        help="系统类型")
+    parser.add_argument("-s", "--system", default="安防系统", help="系统类型")
     parser.add_argument("-o", "--output", default="output/system_inquiry.md", help="输出报告")
     
     args = parser.parse_args()
@@ -368,7 +336,7 @@ def main():
     print(f"加载 {len(products)} 个产品")
     
     # 执行询价
-    inquiry = SystemInquiry(args.system)
+    inquiry = SystemInquiry()
     results = inquiry.inquire(products, args.system)
     
     # 生成报告
@@ -377,9 +345,13 @@ def main():
     
     # 打印汇总
     total = sum(r.price for r in results if r.price > 0)
-    print(f"\n📊 预估总价: ¥{total:,.0f}")
+    core_count = len([r for r in results if r.device_type == "core"])
+    general_count = len([r for r in results if r.device_type == "general"])
     
-    inquiry.close()
+    print(f"\n📊 汇总:")
+    print(f"   核心设备: {core_count} 项")
+    print(f"   通用设备: {general_count} 项")
+    print(f"   预估总价: ¥{total:,.0f}")
 
 
 if __name__ == "__main__":
