@@ -79,6 +79,38 @@ gen = ReportGenerator()
 report = gen.generate(results, "询价报告", "markdown")
 ```
 
+## 🔧 品牌策略
+
+### 系统级品牌策略
+
+系统询价支持**核心设备品牌一致**和**通用辅材性价比优先**：
+
+```
+🔴 核心设备 → 系统内品牌一致
+   ├─ 安防系统: 海康威视 / 大华 / 宇视
+   ├─ 网络系统: 华为 / 华三 / 思科
+   ├─ 服务器系统: 戴尔 / 惠普 / 华为
+   └─ 机房系统: 施耐德 / 艾默生 / 维谛
+
+🟢 通用辅材 → 性价比优先
+   ├─ 硬盘: 希捷 / 西数 / 东芝
+   ├─ 网线: 绿联 / 康普 / 泛达
+   └─ 电源: 台达 / 明纬
+
+🔗 关联系统 → 品牌尽量一致
+   └─ 安防 ↔ 网络 ↔ 服务器 (互相参考)
+```
+
+### 使用示例
+
+```bash
+# 多系统混合询价（自动检测）
+python3 system_inquiry.py -i examples/mixed_systems.csv
+
+# 指定系统询价
+python3 system_inquiry.py -i examples/security_system.csv -s 安防系统
+```
+
 ## 项目结构
 
 ```

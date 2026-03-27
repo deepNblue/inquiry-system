@@ -1,0 +1,9 @@
+name,brand,model,specs,quantity
+网络摄像机,海康威视,DS-2CD3T86FWDV2-I3S,分辨率:1920*1080;焦距:6mm;红外:50m,20
+NVR硬盘录像机,海康威视,DS-8632N-K8,32路;8盘位;H.265+,2
+存储服务器,戴尔,PowerEdge R740xd,双路;128GB;12盘位,2
+核心交换机,华为,S5735S-L48T4S-A1,48千兆+4万兆,2
+服务器,戴尔,PowerEdge R650,Intel Xeon;64GB;960GB SSD,1
+监控硬盘,希捷,ST8000VX001,8TB;7200RPM,32
+机柜,图腾,42U标准,42U;1500kg承重,2
+UPS不间断电源,施耐德,Galaxy VX,200kVA;模块化,1

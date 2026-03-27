@@ -5,9 +5,30 @@
 - 关联系统：紧密关联的系统尽量保持一致
 """
 
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
+
+
+def detect_system_type(device_name: str) -> Optional[str]:
+    """检测设备所属系统"""
+    name = device_name.lower()
+    
+    for sys_name, config in SYSTEMS.items():
+        for keyword in config["core_keywords"]:
+            if keyword.lower() in name:
+                return sys_name
+    
+    # 检查辅材关联
+    for category, brands in GENERAL_BRANDS.items():
+        if category.lower() in name:
+            # 监控相关辅材归属安防
+            if category in ["监控硬盘"]:
+                return "安防系统"
+            # 网线等通用辅材不归属特定系统
+            return None
+    
+    return None
 
 
 class DeviceType(Enum):
@@ -37,7 +58,7 @@ SYSTEMS = {
     "服务器系统": {
         "core_keywords": [
             "服务器", "存储服务器", "SAN存储", "磁带库",
-            "备份设备", "光纤交换机"
+            "备份设备", "光纤交换机", "存储", "阵列", "磁带"
         ],
         "preferred_brand": "戴尔",
         "related_systems": ["网络系统", "机房系统"],
